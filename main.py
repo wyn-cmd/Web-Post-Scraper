@@ -30,12 +30,16 @@ def image_to_ascii(image_data, chars=" .:-=+*#%@"):
     pixels = img.getdata()
     char_list = []
 
-    # start going through each pixel and put a corresponding character into the list for each pizel
+    # start going through each pixel and put a corresponding character into the list for each pixel
     for i in range(new_height):
+
         for j in range(new_width):
+
             pixel = pixels[i * new_width + j]
             char = chars[int(pixel / 256 * len(chars))]
+            
             char_list.append(char)
+    
     char_list.append('\n')
 
     text_image = ''.join(char_list)
@@ -117,5 +121,4 @@ if scraped_posts:
             print("No image found")
         print("-------------------------------------------\n")
 else:
-    print("No posts found.")
-
+    print("No posts found."
