@@ -1,124 +1,100 @@
-# Version 1.0
+# Version 1.2
 
 import io
-import os
 import requests
-import urllib.request
-import PIL.Image as Image
 from bs4 import BeautifulSoup
+from PIL import Image
+
+BASE_URL = 'https://eurus.servehttp.com'
+DEFAULT_CHARS = " .:-=+*#%@"
 
 
+def image_to_ascii(image_data, chars=DEFAULT_CHARS, width=20):
+    """Convert raw image bytes into a scaled ASCII art string."""
+    with Image.open(io.BytesIO(image_data)) as img:
+        img = img.convert('L')
+        orig_width, orig_height = img.size
+        aspect_ratio = orig_height / orig_width
+        
+        new_height = int(width * aspect_ratio)
+        img = img.resize((width, new_height))
 
-# function to dither the images of the post into 
-def image_to_ascii(image_data, chars=" .:-=+*#%@"):
-
-
-    img = Image.open(io.BytesIO(image_data))
-
-    # convert image to greyscale
-    img = img.convert('L')
-
-    width, height = img.size
-    aspect_ratio = height / width
-    
-    # adjust size
-    new_width = 20
-    new_height = int(new_width * aspect_ratio)
-    img = img.resize((new_width, new_height))
-
-    # get pixel data
-    pixels = img.getdata()
+        pixels = list(img.getdata())
+        
     char_list = []
-
-    # start going through each pixel and put a corresponding character into the list for each pixel
     for i in range(new_height):
+        for j in range(width):
+            pixel = pixels[i * width + j]
+            char_index = int(pixel / 256 * len(chars))
+            char_list.append(chars[char_index])
+        char_list.append('\n')
 
-        for j in range(new_width):
-
-            pixel = pixels[i * new_width + j]
-            char = chars[int(pixel / 256 * len(chars))]
-            
-            char_list.append(char)
-    
-    char_list.append('\n')
-
-    text_image = ''.join(char_list)
-
-    return text_image
+    return ''.join(char_list)
 
 
+def fetch_image_ascii(image_url):
+    """Safely download an image and return its ASCII representation."""
+    try:
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        return image_to_ascii(response.content)
+    except requests.RequestException as e:
+        print(f"Error downloading image {image_url}: {e}")
+        return None
 
-# scrapes posts from eurus.servehttp.com and get information about them
+
 def scrape_posts(url):
-
-    response = requests.get(url)
+    """Scrape posts including titles, descriptions, and ASCII-converted images from the target URL."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching URL {url}: {e}")
+        return []
 
     soup = BeautifulSoup(response.content, 'html.parser')
-
     posts = []
 
-
     for post in soup.find_all('div', class_='card'):
+        title_elem = post.find('a', class_='card-title')
+        desc_elem = post.find('p', class_='card-text')
+        
+        if not title_elem or not desc_elem:
+            continue
 
-        # find title
+        title = title_elem.text.strip().replace('\n', '')
+        description = desc_elem.text.strip()
+        
+        image_ascii = None
+        image_elem = post.find('img')
+        
+        if image_elem and image_elem.has_attr('src'):
+            image_url = BASE_URL + image_elem['src']
+            image_ascii = fetch_image_ascii(image_url)
 
-        title = post.find('a', class_='card-title').text.strip().replace('\n', '')  
-
-        # get small description of post
-        description = post.find('p', class_='card-text').text.strip()
-
-        image = post.find('img')
-
-        if image:
-            image_url = 'https://eurus.servehttp.com' + image['src']
-
-
-            if True:
-                image_data = requests.get(image_url).content
-                image_data = image_to_ascii(image_data)
-                posts.append({'title': title, 'description': description, 'image_path': image_data})
-            #except Exception as e:
-            #    print(f"Error downloading image: {e}")
-            #    posts.append({'title': title, 'description': description, 'image_path': None})
-        else:
-            posts.append({'title': title, 'description': description, 'image_path': None})
-
+        posts.append({
+            'title': title, 
+            'description': description, 
+            'image_path': image_ascii
+        })
 
     return posts
 
-# website
-url = 'https://eurus.servehttp.com/posts/'
 
-# scrape the posts
-scraped_posts = scrape_posts(url)
+if __name__ == '__main__':
+    target_url = 'https://eurus.servehttp.com/posts/'
+    scraped_posts = scrape_posts(target_url)
 
+    if scraped_posts:
+        print("---------------Scraped Posts---------------")
+        for post in scraped_posts:
+            print(f"\n\n-------------------------------------------\nTitle: {post['title']}")
+            print(f"\nDescription: \n{post['description']}")
 
-# display them
-if scraped_posts:
-    print("---------------Scraped Posts---------------")
-
-    for i in range(len(scraped_posts)):
-
-        print(f"\n\n-------------------------------------------\nTitle: {scraped_posts[i]['title']}")
-        print(f"\nDescription: \n{scraped_posts[i]['description']}")
-
-        # display post image in dithered text
-        if scraped_posts[i]['image_path']:
-            n = 0
-            for line in scraped_posts[i]['image_path']:
-                if n < 20:
-                    end = ''
-                else:
-                    end = '\n'
-                    n = 0
-
-                print(f"{line}", end=end)
-
-                n += 1
-
-        else:
-
-            print("No image found")
-        print("-------------------------------------------\n")
-else:
-    print("No posts found."
+            if post['image_path']:
+                print(post['image_path'], end='')
+            else:
+                print("No image found")
+            print("-------------------------------------------\n")
+    else:
+        print("No posts found.")
