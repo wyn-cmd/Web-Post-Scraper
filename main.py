@@ -1,6 +1,7 @@
-# Version 1.2
+# Version 1.3
 
 import io
+from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
 from PIL import Image
@@ -9,31 +10,35 @@ BASE_URL = 'https://eurus.servehttp.com'
 DEFAULT_CHARS = " .:-=+*#%@"
 
 
+# Convert raw image bytes into a scaled ASCII art string.
 def image_to_ascii(image_data, chars=DEFAULT_CHARS, width=20):
-    """Convert raw image bytes into a scaled ASCII art string."""
-    with Image.open(io.BytesIO(image_data)) as img:
-        img = img.convert('L')
-        orig_width, orig_height = img.size
-        aspect_ratio = orig_height / orig_width
-        
-        new_height = int(width * aspect_ratio)
-        img = img.resize((width, new_height))
-
-        pixels = list(img.getdata())
+    try:
+        with Image.open(io.BytesIO(image_data)) as img:
+            img = img.convert('L')
+            orig_width, orig_height = img.size
+            aspect_ratio = orig_height / orig_width
+            
+            new_height = int(width * aspect_ratio)
+            img = img.resize((width, new_height))
+            pixels = list(img.getdata())
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None
         
     char_list = []
     for i in range(new_height):
         for j in range(width):
             pixel = pixels[i * width + j]
             char_index = int(pixel / 256 * len(chars))
+            char_index = min(char_index, len(chars) - 1)
             char_list.append(chars[char_index])
         char_list.append('\n')
 
     return ''.join(char_list)
 
 
+# Safely download an image and return its ASCII representation.
 def fetch_image_ascii(image_url):
-    """Safely download an image and return its ASCII representation."""
     try:
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
@@ -43,8 +48,8 @@ def fetch_image_ascii(image_url):
         return None
 
 
+# Scrape posts including titles, descriptions, and ASCII-converted images from the target URL.
 def scrape_posts(url):
-    """Scrape posts including titles, descriptions, and ASCII-converted images from the target URL."""
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -69,7 +74,7 @@ def scrape_posts(url):
         image_elem = post.find('img')
         
         if image_elem and image_elem.has_attr('src'):
-            image_url = BASE_URL + image_elem['src']
+            image_url = urljoin(BASE_URL, image_elem['src'])
             image_ascii = fetch_image_ascii(image_url)
 
         posts.append({
